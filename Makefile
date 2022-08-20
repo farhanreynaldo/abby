@@ -1,5 +1,5 @@
 .DEFAULT_GOAL := help
-.PHONY: coverage deps help lint publish push test tox
+.PHONY: coverage deps help lint black publish push test tox
 
 coverage:  ## Run tests with coverage
 	python -m coverage erase
@@ -14,6 +14,9 @@ lint:  ## Lint and static-check
 	python -m flake8 abby
 	python -m pylint abby
 	python -m mypy abby
+
+black:
+	python -m black abby
 
 publish:  ## Publish to PyPi
 	python -m flit publish
