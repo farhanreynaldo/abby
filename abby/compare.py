@@ -14,9 +14,7 @@ def compare_bootstrap(
     denominator: Optional[str] = "",
     **kwargs,
 ):
-    assert (
-        "variant_name" in data.columns
-    ), "Rename the variant column to `variant_name`"
+    assert "variant_name" in data.columns, "Rename the variant column to `variant_name`"
 
     ctrl, exp = variants
 
@@ -40,9 +38,7 @@ def compare_delta(
     numerator: str,
     denominator: Optional[str] = "",
 ):
-    assert (
-        "variant_name" in data.columns
-    ), "Rename the variant column to `variant_name`"
+    assert "variant_name" in data.columns, "Rename the variant column to `variant_name`"
 
     ctrl, exp = variants
 
@@ -89,9 +85,7 @@ def _compare_bootstrap(
         conversions_exp.sum() / sessions_exp.sum()
         - conversions_ctrl.sum() / sessions_ctrl.sum()
     )
-    p_values = 2 * (
-        1 - (np.abs(observed_diffs) > np.array(bs_observed)).mean()
-    )
+    p_values = 2 * (1 - (np.abs(observed_diffs) > np.array(bs_observed)).mean())
     return p_values
 
 
@@ -118,21 +112,18 @@ def _compare_delta(
         * (sessions_ctrl - mean_sessions_ctrl)
     ).mean()
     cov_exp = (
-        (conversions_exp - mean_conversions_exp)
-        * (sessions_exp - mean_sessions_exp)
+        (conversions_exp - mean_conversions_exp) * (sessions_exp - mean_sessions_exp)
     ).mean()
 
     var_ctrl = (
-        var_conversions_ctrl / mean_sessions_ctrl ** 2
-        + var_sessions_ctrl
-        * mean_conversions_ctrl ** 2
-        / mean_sessions_ctrl ** 4
-        - 2 * mean_conversions_ctrl / mean_sessions_ctrl ** 3 * cov_ctrl
+        var_conversions_ctrl / mean_sessions_ctrl**2
+        + var_sessions_ctrl * mean_conversions_ctrl**2 / mean_sessions_ctrl**4
+        - 2 * mean_conversions_ctrl / mean_sessions_ctrl**3 * cov_ctrl
     )
     var_exp = (
-        var_conversions_exp / mean_sessions_exp ** 2
-        + var_sessions_exp * mean_conversions_exp ** 2 / mean_sessions_exp ** 4
-        - 2 * mean_conversions_exp / mean_sessions_exp ** 3 * cov_exp
+        var_conversions_exp / mean_sessions_exp**2
+        + var_sessions_exp * mean_conversions_exp**2 / mean_sessions_exp**4
+        - 2 * mean_conversions_exp / mean_sessions_exp**3 * cov_exp
     )
 
     cvrs_ctrl = conversions_ctrl.sum() / sessions_ctrl.sum()
