@@ -1,14 +1,66 @@
 """Compare module."""
+from typing import List, Optional
+
 import numpy as np
 import scipy
 from tqdm import tqdm
+import pandas as pd
 
 
 def compare_bootstrap(
-    conversions_ctrl,
-    sessions_ctrl,
-    conversions_exp,
-    sessions_exp,
+    data: pd.DataFrame,
+    variants: List[str],
+    numerator: str,
+    denominator: Optional[str] = "",
+    **kwargs,
+):
+    assert (
+        "variant_name" in data.columns
+    ), "Rename the variant column to `variant_name`"
+
+    ctrl, exp = variants
+
+    numerator_ctrl = data.loc[data["variant_name"] == ctrl, numerator]
+    denominator_ctrl = data.loc[data["variant_name"] == ctrl, denominator]
+    numerator_exp = data.loc[data["variant_name"] == exp, numerator]
+    denominator_exp = data.loc[data["variant_name"] == exp, denominator]
+
+    return _compare_bootstrap(
+        numerator_ctrl,
+        denominator_ctrl,
+        numerator_exp,
+        denominator_exp,
+        **kwargs,
+    )
+
+
+def compare_delta(
+    data: pd.DataFrame,
+    variants: List[str],
+    numerator: str,
+    denominator: Optional[str] = "",
+):
+    assert (
+        "variant_name" in data.columns
+    ), "Rename the variant column to `variant_name`"
+
+    ctrl, exp = variants
+
+    numerator_ctrl = data.loc[data["variant_name"] == ctrl, numerator]
+    denominator_ctrl = data.loc[data["variant_name"] == ctrl, denominator]
+    numerator_exp = data.loc[data["variant_name"] == exp, numerator]
+    denominator_exp = data.loc[data["variant_name"] == exp, denominator]
+
+    return _compare_delta(
+        numerator_ctrl, denominator_ctrl, numerator_exp, denominator_exp
+    )
+
+
+def _compare_bootstrap(
+    conversions_ctrl: np.array,
+    sessions_ctrl: np.array,
+    conversions_exp: np.array,
+    sessions_exp: np.array,
     n_bootstrap: int = 10_000,
 ):
     n_users_a, n_users_b = len(conversions_ctrl), len(conversions_exp)
@@ -43,11 +95,11 @@ def compare_bootstrap(
     return p_values
 
 
-def compare_delta(
-    conversions_ctrl,
-    sessions_ctrl,
-    conversions_exp,
-    sessions_exp,
+def _compare_delta(
+    conversions_ctrl: np.array,
+    sessions_ctrl: np.array,
+    conversions_exp: np.array,
+    sessions_exp: np.array,
 ):
     n_users_a, n_users_b = len(conversions_ctrl), len(conversions_exp)
 
@@ -90,4 +142,4 @@ def compare_delta(
         var_ctrl / n_users_a + var_exp / n_users_b
     )
     p_values = 2 * (1 - scipy.stats.norm(loc=0, scale=1).cdf(z_scores))
-    return cvrs_ctrl, cvrs_exp, p_values
+    return p_values
