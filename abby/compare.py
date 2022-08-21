@@ -97,34 +97,8 @@ def _compare_delta(
 ):
     n_users_a, n_users_b = len(conversions_ctrl), len(conversions_exp)
 
-    mean_sessions_ctrl = sessions_ctrl.mean()
-    mean_conversions_ctrl = conversions_ctrl.mean()
-    var_sessions_ctrl = sessions_ctrl.var()
-    var_conversions_ctrl = conversions_ctrl.var()
-
-    mean_sessions_exp = sessions_exp.mean()
-    mean_conversions_exp = conversions_exp.mean()
-    var_sessions_exp = sessions_exp.var()
-    var_conversions_exp = conversions_exp.var()
-
-    cov_ctrl = (
-        (conversions_ctrl - mean_conversions_ctrl)
-        * (sessions_ctrl - mean_sessions_ctrl)
-    ).mean()
-    cov_exp = (
-        (conversions_exp - mean_conversions_exp) * (sessions_exp - mean_sessions_exp)
-    ).mean()
-
-    var_ctrl = (
-        var_conversions_ctrl / mean_sessions_ctrl**2
-        + var_sessions_ctrl * mean_conversions_ctrl**2 / mean_sessions_ctrl**4
-        - 2 * mean_conversions_ctrl / mean_sessions_ctrl**3 * cov_ctrl
-    )
-    var_exp = (
-        var_conversions_exp / mean_sessions_exp**2
-        + var_sessions_exp * mean_conversions_exp**2 / mean_sessions_exp**4
-        - 2 * mean_conversions_exp / mean_sessions_exp**3 * cov_exp
-    )
+    var_ctrl = ratio_variance(conversions_ctrl, sessions_ctrl)
+    var_exp = ratio_variance(conversions_exp, sessions_exp)
 
     cvrs_ctrl = conversions_ctrl.sum() / sessions_ctrl.sum()
     cvrs_exp = conversions_exp.sum() / sessions_exp.sum()
@@ -132,5 +106,19 @@ def _compare_delta(
     z_scores = np.abs(cvrs_exp - cvrs_ctrl) / np.sqrt(
         var_ctrl / n_users_a + var_exp / n_users_b
     )
+
     p_values = 2 * (1 - scipy.stats.norm(loc=0, scale=1).cdf(z_scores))
     return p_values
+
+
+def ratio_variance(num: np.array, denom: np.array):
+    denom_mean = np.mean(denom)
+    num_mean = np.mean(num)
+    denom_variance = np.var(denom)
+    num_variance = np.var(num)
+    denom_num_covariance = np.cov(denom, num, bias=True)[0][1]
+    return (
+        (num_variance) / (denom_mean**2)
+        - 2 * num_mean * denom_num_covariance / (denom_mean**3)
+        + (num_mean**2) * (denom_variance) / (denom_mean**4)
+    )
