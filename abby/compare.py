@@ -1,9 +1,9 @@
 """Compare module."""
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 import numpy as np
 import pandas as pd
-import scipy
+from scipy import stats
 from tqdm import tqdm
 
 
@@ -37,7 +37,7 @@ def compare_delta(
     variants: List[str],
     numerator: str,
     denominator: Optional[str] = "",
-):
+) -> Dict[str, float]:
     assert "variant_name" in data.columns, "Rename the variant column to `variant_name`"
 
     ctrl, exp = variants
@@ -90,35 +90,47 @@ def _compare_bootstrap(
 
 
 def _compare_delta(
-    conversions_ctrl: np.array,
-    sessions_ctrl: np.array,
-    conversions_exp: np.array,
-    sessions_exp: np.array,
-):
-    n_users_a, n_users_b = len(conversions_ctrl), len(conversions_exp)
+    numerator_ctrl: np.array,
+    denominator_ctrl: np.array,
+    numerator_exp: np.array,
+    denominator_exp: np.array,
+) -> Dict[str, float]:
+    var_ctrl = ratio_variance(numerator_ctrl, denominator_ctrl)
+    var_exp = ratio_variance(numerator_exp, denominator_exp)
 
-    var_ctrl = ratio_variance(conversions_ctrl, sessions_ctrl)
-    var_exp = ratio_variance(conversions_exp, sessions_exp)
+    cvrs_ctrl = numerator_ctrl.sum() / denominator_ctrl.sum()
+    cvrs_exp = numerator_exp.sum() / denominator_exp.sum()
 
-    cvrs_ctrl = conversions_ctrl.sum() / sessions_ctrl.sum()
-    cvrs_exp = conversions_exp.sum() / sessions_exp.sum()
+    diff = cvrs_exp - cvrs_ctrl
+    stde = 1.96 * np.sqrt(var_ctrl + var_exp)
 
-    z_scores = np.abs(cvrs_exp - cvrs_ctrl) / np.sqrt(
-        var_ctrl / n_users_a + var_exp / n_users_b
+    z_scores = np.abs(diff) / np.sqrt(var_ctrl + var_exp)
+    p_values = stats.norm.sf(abs(z_scores)) * 2
+
+    return dict(
+        control_mean=cvrs_ctrl,
+        experiment_mean=cvrs_exp,
+        control_var=var_ctrl,
+        experiment_var=var_exp,
+        absolute_difference=cvrs_exp - cvrs_ctrl,
+        lower_bound=diff - stde,
+        upper_bound=diff + stde,
+        p_values=p_values,
     )
 
-    p_values = 2 * (1 - scipy.stats.norm(loc=0, scale=1).cdf(z_scores))
-    return p_values
 
-
-def ratio_variance(num: np.array, denom: np.array):
+def ratio_variance(num: np.array, denom: np.array) -> float:
+    assert len(num) == len(
+        denom
+    ), f"Different length between num: {len(num)} and denom: {len(denom)}"
+    n_users = len(num)
     denom_mean = np.mean(denom)
     num_mean = np.mean(num)
-    denom_variance = np.var(denom)
-    num_variance = np.var(num)
-    denom_num_covariance = np.cov(denom, num, bias=True)[0][1]
+    denom_variance = np.var(denom, ddof=1)
+    num_variance = np.var(num, ddof=1)
+    denom_num_covariance = np.cov(denom, num, ddof=1)[0][1]
     return (
         (num_variance) / (denom_mean**2)
         - 2 * num_mean * denom_num_covariance / (denom_mean**3)
         + (num_mean**2) * (denom_variance) / (denom_mean**4)
-    )
+    ) / n_users
