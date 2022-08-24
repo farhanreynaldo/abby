@@ -7,6 +7,63 @@ from scipy import stats
 from tqdm import tqdm
 
 
+def compare_ttest(
+    data: pd.DataFrame,
+    variants: List[str],
+    numerator: str,
+    **kwargs,
+):
+    assert "variant_name" in data.columns, "Rename the variant column to `variant_name`"
+
+    ctrl, exp = variants
+
+    numerator_ctrl = data.loc[data["variant_name"] == ctrl, numerator]
+    numerator_exp = data.loc[data["variant_name"] == exp, numerator]
+
+    return _compare_ttest(
+        numerator_ctrl,
+        numerator_exp,
+    )
+
+
+def _compare_ttest(control, experiment):
+
+    control_size = len(control)
+    exp_size = len(experiment)
+    control_mean = np.mean(control)
+    exp_mean = np.mean(experiment)
+
+    control_var = np.var(control, ddof=1)
+    exp_var = np.var(experiment, ddof=1)
+
+    pooled_se = np.sqrt(control_var / control_size + exp_var / exp_size)
+    delta = exp_mean - control_mean
+
+    tstat = delta / pooled_se
+    df = (control_var / control_size + exp_var / exp_size) ** 2 / (
+        control_var**2 / (control_size**2 * (control_size - 1))
+        + exp_var**2 / (exp_size**2 * (exp_size - 1))
+    )
+
+    # two side t-test
+    p_values = 2 * stats.t.cdf(-abs(tstat), df)
+
+    # upper and lower bounds
+    lower_bound = delta - stats.t.ppf(0.975, df) * pooled_se
+    upper_bound = delta + stats.t.ppf(0.975, df) * pooled_se
+
+    return dict(
+        control_mean=control_mean,
+        experiment_mean=exp_mean,
+        control_var=control_var,
+        experiment_var=exp_var,
+        absolute_difference=delta,
+        lower_bound=lower_bound,
+        upper_bound=upper_bound,
+        p_values=p_values,
+    )
+
+
 def compare_bootstrap(
     data: pd.DataFrame,
     variants: List[str],
