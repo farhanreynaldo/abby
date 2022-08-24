@@ -7,6 +7,63 @@ from scipy import stats
 from tqdm import tqdm
 
 
+def compare_ttest(
+    data: pd.DataFrame,
+    variants: List[str],
+    numerator: str,
+    **kwargs,
+):
+    assert "variant_name" in data.columns, "Rename the variant column to `variant_name`"
+
+    ctrl, exp = variants
+
+    numerator_ctrl = data.loc[data["variant_name"] == ctrl, numerator]
+    numerator_exp = data.loc[data["variant_name"] == exp, numerator]
+
+    return _compare_ttest(
+        numerator_ctrl,
+        numerator_exp,
+    )
+
+
+def _compare_ttest(control, experiment):
+
+    control_size = len(control)
+    exp_size = len(experiment)
+    control_mean = np.mean(control)
+    exp_mean = np.mean(experiment)
+
+    control_var = np.var(control, ddof=1)
+    exp_var = np.var(experiment, ddof=1)
+
+    pooled_se = np.sqrt(control_var / control_size + exp_var / exp_size)
+    delta = exp_mean - control_mean
+
+    tstat = delta / pooled_se
+    df = (control_var / control_size + exp_var / exp_size) ** 2 / (
+        control_var**2 / (control_size**2 * (control_size - 1))
+        + exp_var**2 / (exp_size**2 * (exp_size - 1))
+    )
+
+    # two side t-test
+    p_values = 2 * stats.t.cdf(-abs(tstat), df)
+
+    # upper and lower bounds
+    lower_bound = delta - stats.t.ppf(0.975, df) * pooled_se
+    upper_bound = delta + stats.t.ppf(0.975, df) * pooled_se
+
+    return dict(
+        control_mean=control_mean,
+        experiment_mean=exp_mean,
+        control_var=control_var,
+        experiment_var=exp_var,
+        absolute_difference=delta,
+        lower_bound=lower_bound,
+        upper_bound=upper_bound,
+        p_values=p_values,
+    )
+
+
 def compare_bootstrap(
     data: pd.DataFrame,
     variants: List[str],
@@ -23,7 +80,7 @@ def compare_bootstrap(
     numerator_exp = data.loc[data["variant_name"] == exp, numerator]
     denominator_exp = data.loc[data["variant_name"] == exp, denominator]
 
-    return _compare_bootstrap(
+    return _compare_bootstrap_delta(
         numerator_ctrl,
         denominator_ctrl,
         numerator_exp,
@@ -52,38 +109,38 @@ def compare_delta(
     )
 
 
-def _compare_bootstrap(
-    conversions_ctrl: np.array,
-    sessions_ctrl: np.array,
-    conversions_exp: np.array,
-    sessions_exp: np.array,
+def _compare_bootstrap_delta(
+    numerator_ctrl: np.array,
+    denominator_ctrl: np.array,
+    numerator_exp: np.array,
+    denominator_exp: np.array,
     n_bootstrap: int = 10_000,
 ):
-    n_users_a, n_users_b = len(conversions_ctrl), len(conversions_exp)
+    n_users_a, n_users_b = len(numerator_ctrl), len(numerator_exp)
     n_users = n_users_a + n_users_b
     bs_observed = []
 
     for _ in tqdm(range(n_bootstrap)):
-        conversion = np.hstack((conversions_ctrl, conversions_exp))
-        session = np.hstack((sessions_ctrl, sessions_exp))
+        conversion = np.hstack((numerator_ctrl, numerator_exp))
+        session = np.hstack((denominator_ctrl, denominator_exp))
 
         assignments = np.random.choice(n_users, n_users, replace=True)
         ctrl_idxs = assignments[: int(n_users / 2)]
         test_idxs = assignments[int(n_users / 2) :]
 
-        bs_sessions_ctrl = session[ctrl_idxs]
-        bs_sessions_exp = session[test_idxs]
-        bs_conversions_ctrl = conversion[ctrl_idxs]
-        bs_conversions_exp = conversion[test_idxs]
+        bs_denominator_ctrl = session[ctrl_idxs]
+        bs_denominator_exp = session[test_idxs]
+        bs_numerator_ctrl = conversion[ctrl_idxs]
+        bs_numerator_exp = conversion[test_idxs]
 
         bs_observed.append(
-            bs_conversions_exp.sum() / bs_sessions_exp.sum()
-            - bs_conversions_ctrl.sum() / bs_sessions_ctrl.sum()
+            bs_numerator_exp.sum() / bs_denominator_exp.sum()
+            - bs_numerator_ctrl.sum() / bs_denominator_ctrl.sum()
         )
 
     observed_diffs = (
-        conversions_exp.sum() / sessions_exp.sum()
-        - conversions_ctrl.sum() / sessions_ctrl.sum()
+        numerator_exp.sum() / denominator_exp.sum()
+        - numerator_ctrl.sum() / denominator_ctrl.sum()
     )
     p_values = 2 * (1 - (np.abs(observed_diffs) > np.array(bs_observed)).mean())
     return p_values
@@ -98,21 +155,21 @@ def _compare_delta(
     var_ctrl = ratio_variance(numerator_ctrl, denominator_ctrl)
     var_exp = ratio_variance(numerator_exp, denominator_exp)
 
-    cvrs_ctrl = numerator_ctrl.sum() / denominator_ctrl.sum()
-    cvrs_exp = numerator_exp.sum() / denominator_exp.sum()
+    control_mean = numerator_ctrl.sum() / denominator_ctrl.sum()
+    experiment_mean = numerator_exp.sum() / denominator_exp.sum()
 
-    diff = cvrs_exp - cvrs_ctrl
+    diff = experiment_mean - control_mean
     stde = 1.96 * np.sqrt(var_ctrl + var_exp)
 
     z_scores = np.abs(diff) / np.sqrt(var_ctrl + var_exp)
     p_values = stats.norm.sf(abs(z_scores)) * 2
 
     return dict(
-        control_mean=cvrs_ctrl,
-        experiment_mean=cvrs_exp,
+        control_mean=control_mean,
+        experiment_mean=experiment_mean,
         control_var=var_ctrl,
         experiment_var=var_exp,
-        absolute_difference=cvrs_exp - cvrs_ctrl,
+        absolute_difference=experiment_mean - control_mean,
         lower_bound=diff - stde,
         upper_bound=diff + stde,
         p_values=p_values,
