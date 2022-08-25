@@ -1,11 +1,11 @@
 [build-system]
-requires = ["flit_core >=3.2,<4"]
-build-backend = "flit_core.buildapi"
+requires = ["flit"]
+build-backend = "flit.buildapi"
 
-[project]
-name = "abby"
+[tool.flit.metadata]
+module = "abby"
 authors = [{name = "Farhan Reynaldo", email = "farhanreynaldo@gmail.com"}]
-readme = "README.md"
+description-file = "README.md"
 license = {file = "LICENSE"}
 classifiers = ["License :: OSI Approved :: MIT License"]
 dynamic = ["version", "description"]
