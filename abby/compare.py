@@ -36,21 +36,15 @@ def _compare_ttest(control, experiment):
     control_var = np.var(control, ddof=1)
     exp_var = np.var(experiment, ddof=1)
 
-    pooled_se = np.sqrt(control_var / control_size + exp_var / exp_size)
     delta = exp_mean - control_mean
 
-    tstat = delta / pooled_se
-    df = (control_var / control_size + exp_var / exp_size) ** 2 / (
-        control_var**2 / (control_size**2 * (control_size - 1))
-        + exp_var**2 / (exp_size**2 * (exp_size - 1))
-    )
+    df, se = _unequal_var_ttest_denom(control_var, control_size, exp_var, exp_size)
 
-    # two side t-test
-    p_values = 2 * stats.t.cdf(-abs(tstat), df)
+    _, p_values = stats.ttest_ind(control, experiment, equal_var=False)
 
     # upper and lower bounds
-    lower_bound = delta - stats.t.ppf(0.975, df) * pooled_se
-    upper_bound = delta + stats.t.ppf(0.975, df) * pooled_se
+    lower_bound = delta - stats.t.ppf(0.975, df) * se
+    upper_bound = delta + stats.t.ppf(0.975, df) * se
 
     return dict(
         control_mean=control_mean,
@@ -191,3 +185,16 @@ def ratio_variance(num: np.array, denom: np.array) -> float:
         - 2 * num_mean * denom_num_covariance / (denom_mean**3)
         + (num_mean**2) * (denom_variance) / (denom_mean**4)
     ) / n_users
+
+
+def _unequal_var_ttest_denom(v1, n1, v2, n2):
+    vn1 = v1 / n1
+    vn2 = v2 / n2
+    with np.errstate(divide="ignore", invalid="ignore"):
+        df = (vn1 + vn2) ** 2 / (vn1**2 / (n1 - 1) + vn2**2 / (n2 - 1))
+
+    # If df is undefined, variances are zero (assumes n1 > 0 & n2 > 0).
+    # Hence it doesn't matter what df is as long as it's not NaN.
+    df = np.where(np.isnan(df), 1, df)
+    denom = np.sqrt(vn1 + vn2)
+    return df, denom
