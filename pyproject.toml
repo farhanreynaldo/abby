@@ -4,9 +4,11 @@ build-backend = "flit.buildapi"
 
 [tool.flit.metadata]
 module = "abby"
-authors = [{name = "Farhan Reynaldo", email = "farhanreynaldo@gmail.com"}]
+author = "Farhan Reynaldo"
+author-email = "farhanreynaldo@gmail.com"
 description-file = "README.md"
 license = {file = "LICENSE"}
+home-page = "https://github.com/farhanreynaldo/abby"
 classifiers = ["License :: OSI Approved :: MIT License"]
 dynamic = ["version", "description"]
 requires-python = ">=3.7"
@@ -16,6 +18,3 @@ requires = [
     "scipy==1.9.2",
     "tqdm==4.64.0",
 ]
-
-[project.urls]
-Home = "https://github.com/farhanreynaldo/abby"
