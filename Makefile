@@ -1,5 +1,5 @@
 .DEFAULT_GOAL := help
-.PHONY: coverage deps help lint black publish push test tox
+.PHONY: coverage deps help lint black publish push test
 
 coverage:  ## Run tests with coverage
 	python -m coverage erase
@@ -8,7 +8,7 @@ coverage:  ## Run tests with coverage
 
 deps:  ## Install dependencies
 	python -m pip install --upgrade pip
-	python -m pip install black coverage flake8 flit mccabe mypy pylint pytest tox tox-gh-actions
+	python -m pip install black coverage flake8 flit mypy pylint pytest
 
 lint:  ## Lint and static-check
 	python -m flake8 abby
@@ -26,9 +26,6 @@ push:  ## Push code with tags
 
 test:  ## Run tests
 	python -m pytest -ra
-
-tox:   ## Run tox
-	python -m tox
 
 help: ## Show help message
 	@IFS=$$'\n' ; \
