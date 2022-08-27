@@ -58,7 +58,7 @@ def _compare_ttest(control, experiment):
     )
 
 
-def compare_bootstrap(
+def compare_bootstrap_delta(
     data: pd.DataFrame,
     variants: List[str],
     numerator: str,
@@ -69,10 +69,10 @@ def compare_bootstrap(
 
     ctrl, exp = variants
 
-    numerator_ctrl = data.loc[data["variant_name"] == ctrl, numerator]
-    denominator_ctrl = data.loc[data["variant_name"] == ctrl, denominator]
-    numerator_exp = data.loc[data["variant_name"] == exp, numerator]
-    denominator_exp = data.loc[data["variant_name"] == exp, denominator]
+    numerator_ctrl = data.loc[data["variant_name"] == ctrl, numerator].values
+    denominator_ctrl = data.loc[data["variant_name"] == ctrl, denominator].values
+    numerator_exp = data.loc[data["variant_name"] == exp, numerator].values
+    denominator_exp = data.loc[data["variant_name"] == exp, denominator].values
 
     return _compare_bootstrap_delta(
         numerator_ctrl,
@@ -136,8 +136,54 @@ def _compare_bootstrap_delta(
         numerator_exp.sum() / denominator_exp.sum()
         - numerator_ctrl.sum() / denominator_ctrl.sum()
     )
+
+    lower_bound, upper_bound = _confidence_interval_bootstrap(
+        numerator_ctrl,
+        denominator_ctrl,
+        numerator_exp,
+        denominator_exp,
+        n_bootstrap,
+    )
     p_values = 2 * (1 - (np.abs(observed_diffs) > np.array(bs_observed)).mean())
-    return p_values
+    return dict(
+        control_mean=numerator_ctrl.sum() / denominator_ctrl.sum(),
+        experiment_mean=numerator_exp.sum() / denominator_exp.sum(),
+        control_var=ratio_variance(numerator_ctrl, denominator_ctrl),
+        experiment_var=ratio_variance(numerator_exp, denominator_exp),
+        absolute_difference=observed_diffs,
+        lower_bound=lower_bound,
+        upper_bound=upper_bound,
+        p_values=p_values,
+    )
+
+
+def _confidence_interval_bootstrap(
+    numerator_ctrl: np.array,
+    denominator_ctrl: np.array,
+    numerator_exp: np.array,
+    denominator_exp: np.array,
+    n_bootstrap: int,
+):
+    bs_observed = []
+
+    for _ in tqdm(range(n_bootstrap)):
+        ctrl_idxs = np.random.choice(
+            len(numerator_ctrl), len(numerator_ctrl), replace=True
+        )
+        exp_idxs = np.random.choice(
+            len(numerator_exp), len(numerator_exp), replace=True
+        )
+
+        bs_denominator_ctrl = denominator_ctrl[ctrl_idxs]
+        bs_denominator_exp = denominator_exp[exp_idxs]
+        bs_numerator_ctrl = numerator_ctrl[ctrl_idxs]
+        bs_numerator_exp = numerator_exp[exp_idxs]
+
+        bs_observed.append(
+            bs_numerator_exp.sum() / bs_denominator_exp.sum()
+            - bs_numerator_ctrl.sum() / bs_denominator_ctrl.sum()
+        )
+    return np.percentile(bs_observed, [2.5, 97.5])
 
 
 def _compare_delta(
