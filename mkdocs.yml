@@ -1,0 +1,5 @@
+site_name: Abby
+site_url: https://farhanreynaldo.github.io/abby/
+
+theme:
+  name: material
