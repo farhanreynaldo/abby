@@ -31,6 +31,6 @@ class TestCompareTtest:
         assert result["upper_bound"] == pytest.approx(3.3654832, rel=4)
         assert result["p_values"] == pytest.approx(0.07939, rel=4)
 
-    def test_wrong_variant_column_name(self, sleeps_wrong: Callable):
+    def test_ttest_wrong_variant_column_name(self, sleeps_wrong: Callable):
         with pytest.raises(AssertionError):
             compare_ttest(sleeps_wrong, ["control", "experiment"], "extra")
