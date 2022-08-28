@@ -17,8 +17,8 @@ def click_df_wrong(click_df):
     return click_df.rename(columns={"variant_name": "group"})
 
 
-class TestCompareTtest:
-    def test_ttest_result(self, click_df: Callable):
+class TestCompareDelta:
+    def test_delta_result(self, click_df: Callable):
         result = compare_delta(
             click_df, ["control", "experiment"], "click", "impression"
         )
@@ -31,7 +31,7 @@ class TestCompareTtest:
         assert result["upper_bound"] == pytest.approx(0.081661, rel=4)
         assert result["p_values"] == pytest.approx(0.326668, rel=4)
 
-    def test_wrong_variant_column_name(self, click_df_wrong: Callable):
+    def test_delta_wrong_variant_column_name(self, click_df_wrong: Callable):
         with pytest.raises(AssertionError):
             compare_delta(
                 click_df_wrong, ["control", "experiment"], "click", "impression"
