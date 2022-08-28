@@ -15,6 +15,8 @@ $ pip install abby
 
 # Quick Start
 
+Please note that your variant name column should be named as `variant_name`. Otherwise, the method will raise an error and ask you to adjust the column name accordingly.
+
 ## A/B testing for continuous metric
 
 ```python
@@ -68,7 +70,9 @@ from abby import compare_multiple, Ratio
 data = load_dataset("click_impression")
 
 result = compare_multiple(
-    data, ["control", "experiment"], ["click", Ratio("click", "impression")]
+    data=data,
+    variants=["control", "experiment"],
+    metrics=["click", Ratio("click", "impression")],
 )
 ```
 
