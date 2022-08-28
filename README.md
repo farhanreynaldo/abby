@@ -1,8 +1,8 @@
 # abby
 
-> AB testing for Python
+> A/B testing for Human
 
-Abby is a python library package for A/B testing for human. Abby aims to make A/B testing easy and accessible to anyone.
+Abby is a A/B testing library package for human. Abby aims to make A/B testing as easy as ABC and accessible to anyone.
 
 [![PyPI Version][pypi-image]][pypi-url]
 [![Build Status][build-image]][build-url]
