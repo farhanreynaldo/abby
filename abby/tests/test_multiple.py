@@ -13,6 +13,11 @@ def click_df() -> pd.DataFrame:
     return data
 
 
+@pytest.fixture
+def click_df_wrong(click_df):
+    return click_df.rename(columns={"variant_name": "group"})
+
+
 class TestCompareMultiple:
     def test_multiple_result(self, click_df: Callable):
         result = compare_multiple(
@@ -50,8 +55,10 @@ class TestCompareMultiple:
         )
         assert result["click/impression"]["p_values"] == pytest.approx(0.326668, rel=4)
 
-    # def test_delta_wrong_variant_column_name(self, click_df_wrong: Callable):
-    #     with pytest.raises(AssertionError):
-    #         compare_multiple(
-    #             click_df_wrong, ["control", "experiment"], "click", "impression"
-    #         )
+    def test_multiple_wrong_variant_column_name(self, click_df_wrong: Callable):
+        with pytest.raises(AssertionError):
+            compare_multiple(
+                click_df_wrong,
+                ["control", "experiment"],
+                ["click", Ratio("click", "impression")],
+            )
