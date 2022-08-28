@@ -1,10 +1,55 @@
 """Compare module."""
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Union
 
 import numpy as np
 import pandas as pd
 from scipy import stats
 from tqdm import tqdm
+
+from abby.utils import Ratio
+
+
+def compare_multiple(
+    data: pd.DataFrame, variants: List[str], metrics: List[Union[str, Ratio]]
+):
+    assert "variant_name" in data.columns, "Rename the variant column to `variant_name`"
+
+    ctrl, exp = variants
+
+    results = dict()
+
+    for metric in metrics:
+        if isinstance(metric, Ratio):
+            numerator_ctrl = data.loc[
+                data["variant_name"] == ctrl, metric.numerator
+            ].values
+            denominator_ctrl = data.loc[
+                data["variant_name"] == ctrl, metric.denominator
+            ].values
+            numerator_exp = data.loc[
+                data["variant_name"] == exp, metric.numerator
+            ].values
+            denominator_exp = data.loc[
+                data["variant_name"] == exp, metric.denominator
+            ].values
+
+            res_ratio = _compare_delta(
+                numerator_ctrl, denominator_ctrl, numerator_exp, denominator_exp
+            )
+            results[metric.name] = res_ratio
+
+        elif isinstance(metric, str):
+            numerator_ctrl = data.loc[data["variant_name"] == ctrl, metric]
+            numerator_exp = data.loc[data["variant_name"] == exp, metric]
+
+            results[metric] = _compare_ttest(
+                numerator_ctrl,
+                numerator_exp,
+            )
+        else:
+            raise ValueError(f"Unknown type: {type(metric)}")
+
+    return results
 
 
 def compare_ttest(
