@@ -1,5 +1,6 @@
 from typing import Callable
 
+import numpy as np
 import pandas as pd
 import pytest
 
@@ -13,8 +14,13 @@ def click_df() -> pd.DataFrame:
 
 
 @pytest.fixture
-def click_df_wrong(click_df):
+def click_df_wrong(click_df: Callable) -> pd.DataFrame:
     return click_df.rename(columns={"variant_name": "group"})
+
+
+@pytest.fixture
+def click_df_mismatch_ratio(click_df: Callable) -> pd.DataFrame:
+    return click_df.assign(variant_name=np.repeat(["control", "experiment"], [180, 20]))
 
 
 class TestCompareDelta:
@@ -35,4 +41,15 @@ class TestCompareDelta:
         with pytest.raises(AssertionError):
             compare_delta(
                 click_df_wrong, ["control", "experiment"], "click", "impression"
+            )
+
+    def test_delta_raise_warning_mismatch_ratio(
+        self, click_df_mismatch_ratio: Callable
+    ):
+        with pytest.warns(UserWarning):
+            compare_delta(
+                click_df_mismatch_ratio,
+                ["control", "experiment"],
+                "click",
+                "impression",
             )
