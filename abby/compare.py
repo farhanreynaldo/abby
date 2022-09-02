@@ -1,4 +1,5 @@
 """Compare module."""
+import warnings
 from typing import Dict, List, Optional, Union
 
 import numpy as np
@@ -6,6 +7,7 @@ import pandas as pd
 from scipy import stats
 from tqdm import tqdm
 
+from abby.diagnose import sample_ratio_mismatch
 from abby.utils import Ratio
 
 
@@ -13,6 +15,8 @@ def compare_multiple(
     data: pd.DataFrame, variants: List[str], metrics: List[Union[str, Ratio]]
 ):
     assert "variant_name" in data.columns, "Rename the variant column to `variant_name`"
+    if sample_ratio_mismatch(data["variant_name"]) < 0.05:
+        warnings.warn("There are sample ratio mismatch, your variants are not balance")
 
     ctrl, exp = variants
 
@@ -59,6 +63,8 @@ def compare_ttest(
     **kwargs,
 ):
     assert "variant_name" in data.columns, "Rename the variant column to `variant_name`"
+    if sample_ratio_mismatch(data["variant_name"]) < 0.05:
+        warnings.warn("There are sample ratio mismatch, your variants are not balance")
 
     ctrl, exp = variants
 
@@ -111,6 +117,8 @@ def compare_bootstrap_delta(
     **kwargs,
 ):
     assert "variant_name" in data.columns, "Rename the variant column to `variant_name`"
+    if sample_ratio_mismatch(data["variant_name"]) < 0.05:
+        warnings.warn("There are sample ratio mismatch, your variants are not balance")
 
     ctrl, exp = variants
 
@@ -135,6 +143,8 @@ def compare_delta(
     denominator: Optional[str] = "",
 ) -> Dict[str, float]:
     assert "variant_name" in data.columns, "Rename the variant column to `variant_name`"
+    if sample_ratio_mismatch(data["variant_name"]) < 0.05:
+        warnings.warn("There are sample ratio mismatch, your variants are not balance")
 
     ctrl, exp = variants
 
