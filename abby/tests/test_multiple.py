@@ -1,5 +1,6 @@
 from typing import Callable
 
+import numpy as np
 import pandas as pd
 import pytest
 
@@ -18,6 +19,11 @@ def click_df_wrong(click_df):
     return click_df.rename(columns={"variant_name": "group"})
 
 
+@pytest.fixture
+def click_df_mismatch_ratio(click_df: Callable) -> pd.DataFrame:
+    return click_df.assign(variant_name=np.repeat(["control", "experiment"], [180, 20]))
+
+
 class TestCompareMultiple:
     def test_multiple_result(self, click_df: Callable):
         result = compare_multiple(
@@ -32,33 +38,30 @@ class TestCompareMultiple:
         assert result["click"]["upper_bound"] == pytest.approx(0.38618, rel=4)
         assert result["click"]["p_values"] == pytest.approx(0.08666, rel=4)
 
-        assert result["click/impression"]["control_mean"] == pytest.approx(
-            0.135135, rel=4
-        )
-        assert result["click/impression"]["experiment_mean"] == pytest.approx(
-            0.162371, rel=4
-        )
-        assert result["click/impression"]["control_var"] == pytest.approx(
-            0.000296, rel=4
-        )
-        assert result["click/impression"]["experiment_var"] == pytest.approx(
-            0.000475, rel=4
-        )
-        assert result["click/impression"]["absolute_difference"] == pytest.approx(
-            0.027236, rel=4
-        )
-        assert result["click/impression"]["lower_bound"] == pytest.approx(
-            -0.027189, rel=4
-        )
-        assert result["click/impression"]["upper_bound"] == pytest.approx(
-            0.081661, rel=4
-        )
-        assert result["click/impression"]["p_values"] == pytest.approx(0.326668, rel=4)
+        name = "click/impression"
+        assert result[name]["control_mean"] == pytest.approx(0.135135, rel=4)
+        assert result[name]["experiment_mean"] == pytest.approx(0.162371, rel=4)
+        assert result[name]["control_var"] == pytest.approx(0.000296, rel=4)
+        assert result[name]["experiment_var"] == pytest.approx(0.000475, rel=4)
+        assert result[name]["absolute_difference"] == pytest.approx(0.027236, rel=4)
+        assert result[name]["lower_bound"] == pytest.approx(-0.027189, rel=4)
+        assert result[name]["upper_bound"] == pytest.approx(0.081661, rel=4)
+        assert result[name]["p_values"] == pytest.approx(0.326668, rel=4)
 
     def test_multiple_wrong_variant_column_name(self, click_df_wrong: Callable):
         with pytest.raises(AssertionError):
             compare_multiple(
                 click_df_wrong,
+                ["control", "experiment"],
+                ["click", Ratio("click", "impression")],
+            )
+
+    def test_multiple_raise_warning_mismatch_ratio(
+        self, click_df_mismatch_ratio: Callable
+    ):
+        with pytest.warns(UserWarning):
+            compare_multiple(
+                click_df_mismatch_ratio,
                 ["control", "experiment"],
                 ["click", Ratio("click", "impression")],
             )

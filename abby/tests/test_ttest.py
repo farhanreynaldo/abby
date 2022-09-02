@@ -1,5 +1,6 @@
 from typing import Callable
 
+import numpy as np
 import pandas as pd
 import pytest
 
@@ -19,6 +20,11 @@ def sleeps_wrong(sleeps):
     return sleeps.rename(columns={"variant_name": "group"})
 
 
+@pytest.fixture
+def sleeps_mismatch_ratio(sleeps: Callable) -> pd.DataFrame:
+    return sleeps.assign(variant_name=np.repeat(["control", "experiment"], [18, 2]))
+
+
 class TestCompareTtest:
     def test_ttest_result(self, sleeps: Callable):
         result = compare_ttest(sleeps, ["control", "experiment"], "extra")
@@ -34,3 +40,7 @@ class TestCompareTtest:
     def test_ttest_wrong_variant_column_name(self, sleeps_wrong: Callable):
         with pytest.raises(AssertionError):
             compare_ttest(sleeps_wrong, ["control", "experiment"], "extra")
+
+    def test_ttest_raise_warning_mismatch_ratio(self, sleeps_mismatch_ratio: Callable):
+        with pytest.warns(UserWarning):
+            compare_ttest(sleeps_mismatch_ratio, ["control", "experiment"], "extra")
