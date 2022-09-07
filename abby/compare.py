@@ -1,10 +1,12 @@
 """Compare module."""
 import warnings
+from itertools import combinations
 from typing import Dict, List, Optional, Union
 
 import numpy as np
 import pandas as pd
 from scipy import stats
+from statsmodels.stats.multitest import multipletests
 from tqdm import tqdm
 
 from abby.diagnose import sample_ratio_mismatch
@@ -12,84 +14,99 @@ from abby.utils import Ratio
 
 
 def compare_multiple(
-    data: pd.DataFrame, variants: List[str], metrics: List[Union[str, Ratio]]
+    data: pd.DataFrame,
+    variants: List[str],
+    metrics: List[Union[str, Ratio]],
+    method: Optional[str] = "bonferroni",
 ):
     assert "variant_name" in data.columns, "Rename the variant column to `variant_name`"
+    assert set(variants) == set(
+        data["variant_name"].unique()
+    ), "One or more variants are not found in the data"
     if sample_ratio_mismatch(data["variant_name"]) < 0.05:
         warnings.warn("There are sample ratio mismatch, your variants are not balance")
 
-    ctrl, exp = variants
-
-    results = dict()
+    results = []
 
     for metric in metrics:
         if isinstance(metric, Ratio):
-            control_num = data.loc[
-                data["variant_name"] == ctrl, metric.numerator
-            ].values
-            control_denom = data.loc[
-                data["variant_name"] == ctrl, metric.denominator
-            ].values
-            exp_num = data.loc[data["variant_name"] == exp, metric.numerator].values
-            exp_denom = data.loc[data["variant_name"] == exp, metric.denominator].values
-
-            res_ratio = _compare_delta(control_num, control_denom, exp_num, exp_denom)
-            results[metric.name] = res_ratio
+            print("ratio")
+            result_df = compare_delta(
+                data, variants, metric.numerator, metric.denominator, method=method
+            )
+            result_df["metric"] = metric.name
+            results.append(result_df)
 
         elif isinstance(metric, str):
-            control_num = data.loc[data["variant_name"] == ctrl, metric]
-            exp_num = data.loc[data["variant_name"] == exp, metric]
-
-            results[metric] = _compare_ttest(
-                control_num,
-                exp_num,
-            )
+            result_df = compare_ttest(data, variants, metric, method=method)
+            result_df["metric"] = metric
+            results.append(result_df)
         else:
             raise ValueError(f"Unknown type: {type(metric)}")
 
-    return results
+    return pd.concat(results).set_index("metric")
 
 
 def compare_ttest(
     data: pd.DataFrame,
     variants: List[str],
     numerator: str,
+    method: Optional[str] = "bonferroni",
 ):
     assert "variant_name" in data.columns, "Rename the variant column to `variant_name`"
+    assert set(variants) == set(
+        data["variant_name"].unique()
+    ), "One or more variants are not found in the data"
     if sample_ratio_mismatch(data["variant_name"]) < 0.05:
         warnings.warn("There are sample ratio mismatch, your variants are not balance")
 
-    ctrl, exp = variants
+    if len(variants) == 2:
+        a_name, b_name = variants
 
-    control_num = data.loc[data["variant_name"] == ctrl, numerator]
-    exp_num = data.loc[data["variant_name"] == exp, numerator]
+        a_num = data.loc[data["variant_name"] == a_name, numerator]
+        b_num = data.loc[data["variant_name"] == b_name, numerator]
 
-    return _compare_ttest(
-        control_num,
-        exp_num,
-    )
+        return _compare_ttest(a_num, a_name, b_num, b_name)
+
+    elif len(variants) > 2:
+        pairs = combinations(variants, 2)
+        results = []
+        for (a_name, b_name) in pairs:
+            a_num = data.loc[data["variant_name"] == a_name, numerator]
+            b_num = data.loc[data["variant_name"] == b_name, numerator]
+            results.append(_compare_ttest(a_num, a_name, b_num, b_name))
+        results_df = pd.concat(results)
+        results_df["p_values_corrected"] = multipletests(
+            results_df["p_values"].values, method=method
+        )[1]
+        return results_df
 
 
-def _compare_ttest(control: np.array, experiment: np.array) -> Dict[str, float]:
-    control_size, exp_size = len(control), len(experiment)
-    control_mean, exp_mean = np.mean(control), np.mean(experiment)
+def _compare_ttest(
+    a: np.array, a_name: str, b: np.array, b_name: str
+) -> Dict[str, float]:
+    a_size, b_size = len(a), len(b)
+    a_mean, b_mean = np.mean(a), np.mean(b)
 
-    control_var, exp_var = np.var(control, ddof=1), np.var(experiment, ddof=1)
+    a_var, b_var = np.var(a, ddof=1), np.var(b, ddof=1)
 
-    delta = exp_mean - control_mean
-    _, p_values = stats.ttest_ind(control, experiment, equal_var=False)
-    stde = 1.96 * np.sqrt(control_var / control_size + exp_var / exp_size)
+    delta = b_mean - a_mean
+    _, p_values = stats.ttest_ind(a, b, equal_var=False)
+    stde = 1.96 * np.sqrt(a_var / a_size + b_var / b_size)
 
-    return dict(
-        control_mean=control_mean,
-        experiment_mean=exp_mean,
-        control_var=control_var,
-        experiment_var=exp_var,
+    result = dict(
+        A=a_name,
+        B=b_name,
+        mean_A=a_mean,
+        mean_B=b_mean,
+        var_A=a_var,
+        var_B=b_var,
         absolute_difference=delta,
         lower_bound=delta - stde,
         upper_bound=delta + stde,
         p_values=p_values,
     )
+    return pd.DataFrame([result])
 
 
 def compare_bootstrap_delta(
@@ -123,25 +140,49 @@ def compare_delta(
     data: pd.DataFrame,
     variants: List[str],
     numerator: str,
-    denominator: Optional[str] = "",
+    denominator: str,
+    method: Optional[str] = "bonferroni",
 ) -> Dict[str, float]:
     assert "variant_name" in data.columns, "Rename the variant column to `variant_name`"
+    assert set(variants) == set(
+        data["variant_name"].unique()
+    ), "One or more variants are not found in the data"
     if sample_ratio_mismatch(data["variant_name"]) < 0.05:
         warnings.warn("There are sample ratio mismatch, your variants are not balance")
 
-    ctrl, exp = variants
+    if len(variants) == 2:
+        a_name, b_name = variants
 
-    control_num = data.loc[data["variant_name"] == ctrl, numerator]
-    control_denom = data.loc[data["variant_name"] == ctrl, denominator]
-    exp_num = data.loc[data["variant_name"] == exp, numerator]
-    exp_denom = data.loc[data["variant_name"] == exp, denominator]
+        a_num = data.loc[data["variant_name"] == a_name, numerator]
+        a_denom = data.loc[data["variant_name"] == a_name, denominator]
+        b_num = data.loc[data["variant_name"] == b_name, numerator]
+        b_denom = data.loc[data["variant_name"] == b_name, denominator]
 
-    return _compare_delta(
-        control_num,
-        control_denom,
-        exp_num,
-        exp_denom,
-    )
+        return _compare_delta(a_num, a_denom, a_name, b_num, b_denom, b_name)
+
+    elif len(variants) > 2:
+        pairs = combinations(variants, 2)
+        results = []
+        for (a_name, b_name) in pairs:
+            a_num = data.loc[data["variant_name"] == a_name, numerator]
+            a_denom = data.loc[data["variant_name"] == a_name, denominator]
+            b_num = data.loc[data["variant_name"] == b_name, numerator]
+            b_denom = data.loc[data["variant_name"] == b_name, denominator]
+            results.append(
+                _compare_delta(
+                    a_num,
+                    a_denom,
+                    a_name,
+                    b_num,
+                    b_denom,
+                    b_name,
+                )
+            )
+        results_df = pd.concat(results)
+        results_df["p_values_corrected"] = multipletests(
+            results_df["p_values"].values, method=method
+        )[1]
+        return results_df
 
 
 def _compare_bootstrap_delta(
@@ -227,39 +268,42 @@ def _confidence_interval_bootstrap(
 
 
 def _compare_delta(
-    control_num: np.array,
-    control_denom: np.array,
-    exp_num: np.array,
-    exp_denom: np.array,
+    a_num: np.array,
+    a_denom: np.array,
+    a_name: str,
+    b_num: np.array,
+    b_denom: np.array,
+    b_name: str,
 ) -> Dict[str, float]:
 
-    control_size = len(control_num)
-    exp_size = len(exp_num)
+    a_size = len(a_num)
+    b_size = len(b_num)
 
-    control_var = ratio_variance(control_num, control_denom)
-    experiment_var = ratio_variance(exp_num, exp_denom)
+    a_var = ratio_variance(a_num, a_denom)
+    b_var = ratio_variance(b_num, b_denom)
 
-    control_mean = control_num.sum() / control_denom.sum()
-    experiment_mean = exp_num.sum() / exp_denom.sum()
+    a_mean = a_num.sum() / a_denom.sum()
+    b_mean = b_num.sum() / b_denom.sum()
 
-    delta = experiment_mean - control_mean
-    stde = 1.96 * np.sqrt(control_var / control_size + experiment_var / exp_size)
+    delta = b_mean - a_mean
+    stde = 1.96 * np.sqrt(a_var / a_size + b_var / b_size)
 
-    z_scores = np.abs(delta) / np.sqrt(
-        control_var / control_size + experiment_var / exp_size
-    )
+    z_scores = np.abs(delta) / np.sqrt(a_var / a_size + b_var / b_size)
     p_values = stats.norm.sf(abs(z_scores)) * 2
 
-    return dict(
-        control_mean=control_mean,
-        experiment_mean=experiment_mean,
-        control_var=control_var,
-        experiment_var=experiment_var,
-        absolute_difference=experiment_mean - control_mean,
+    result = dict(
+        A=a_name,
+        B=b_name,
+        mean_A=a_mean,
+        mean_B=b_mean,
+        var_A=a_var,
+        var_B=b_var,
+        absolute_difference=delta,
         lower_bound=delta - stde,
         upper_bound=delta + stde,
         p_values=p_values,
     )
+    return pd.DataFrame([result])
 
 
 def ratio_variance(num: np.array, denom: np.array) -> float:
