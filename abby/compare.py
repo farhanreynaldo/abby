@@ -24,31 +24,25 @@ def compare_multiple(
 
     for metric in metrics:
         if isinstance(metric, Ratio):
-            numerator_ctrl = data.loc[
+            control_num = data.loc[
                 data["variant_name"] == ctrl, metric.numerator
             ].values
-            denominator_ctrl = data.loc[
+            control_denom = data.loc[
                 data["variant_name"] == ctrl, metric.denominator
             ].values
-            numerator_exp = data.loc[
-                data["variant_name"] == exp, metric.numerator
-            ].values
-            denominator_exp = data.loc[
-                data["variant_name"] == exp, metric.denominator
-            ].values
+            exp_num = data.loc[data["variant_name"] == exp, metric.numerator].values
+            exp_denom = data.loc[data["variant_name"] == exp, metric.denominator].values
 
-            res_ratio = _compare_delta(
-                numerator_ctrl, denominator_ctrl, numerator_exp, denominator_exp
-            )
+            res_ratio = _compare_delta(control_num, control_denom, exp_num, exp_denom)
             results[metric.name] = res_ratio
 
         elif isinstance(metric, str):
-            numerator_ctrl = data.loc[data["variant_name"] == ctrl, metric]
-            numerator_exp = data.loc[data["variant_name"] == exp, metric]
+            control_num = data.loc[data["variant_name"] == ctrl, metric]
+            exp_num = data.loc[data["variant_name"] == exp, metric]
 
             results[metric] = _compare_ttest(
-                numerator_ctrl,
-                numerator_exp,
+                control_num,
+                exp_num,
             )
         else:
             raise ValueError(f"Unknown type: {type(metric)}")
@@ -60,7 +54,6 @@ def compare_ttest(
     data: pd.DataFrame,
     variants: List[str],
     numerator: str,
-    **kwargs,
 ):
     assert "variant_name" in data.columns, "Rename the variant column to `variant_name`"
     if sample_ratio_mismatch(data["variant_name"]) < 0.05:
@@ -68,34 +61,24 @@ def compare_ttest(
 
     ctrl, exp = variants
 
-    numerator_ctrl = data.loc[data["variant_name"] == ctrl, numerator]
-    numerator_exp = data.loc[data["variant_name"] == exp, numerator]
+    control_num = data.loc[data["variant_name"] == ctrl, numerator]
+    exp_num = data.loc[data["variant_name"] == exp, numerator]
 
     return _compare_ttest(
-        numerator_ctrl,
-        numerator_exp,
+        control_num,
+        exp_num,
     )
 
 
-def _compare_ttest(control, experiment):
+def _compare_ttest(control: np.array, experiment: np.array) -> Dict[str, float]:
+    control_size, exp_size = len(control), len(experiment)
+    control_mean, exp_mean = np.mean(control), np.mean(experiment)
 
-    control_size = len(control)
-    exp_size = len(experiment)
-    control_mean = np.mean(control)
-    exp_mean = np.mean(experiment)
-
-    control_var = np.var(control, ddof=1)
-    exp_var = np.var(experiment, ddof=1)
+    control_var, exp_var = np.var(control, ddof=1), np.var(experiment, ddof=1)
 
     delta = exp_mean - control_mean
-
-    df, se = _unequal_var_ttest_denom(control_var, control_size, exp_var, exp_size)
-
     _, p_values = stats.ttest_ind(control, experiment, equal_var=False)
-
-    # upper and lower bounds
-    lower_bound = delta - stats.t.ppf(0.975, df) * se
-    upper_bound = delta + stats.t.ppf(0.975, df) * se
+    stde = 1.96 * np.sqrt(control_var / control_size + exp_var / exp_size)
 
     return dict(
         control_mean=control_mean,
@@ -103,8 +86,8 @@ def _compare_ttest(control, experiment):
         control_var=control_var,
         experiment_var=exp_var,
         absolute_difference=delta,
-        lower_bound=lower_bound,
-        upper_bound=upper_bound,
+        lower_bound=delta - stde,
+        upper_bound=delta + stde,
         p_values=p_values,
     )
 
@@ -122,16 +105,16 @@ def compare_bootstrap_delta(
 
     ctrl, exp = variants
 
-    numerator_ctrl = data.loc[data["variant_name"] == ctrl, numerator].values
-    denominator_ctrl = data.loc[data["variant_name"] == ctrl, denominator].values
-    numerator_exp = data.loc[data["variant_name"] == exp, numerator].values
-    denominator_exp = data.loc[data["variant_name"] == exp, denominator].values
+    control_num = data.loc[data["variant_name"] == ctrl, numerator].values
+    control_denom = data.loc[data["variant_name"] == ctrl, denominator].values
+    exp_num = data.loc[data["variant_name"] == exp, numerator].values
+    exp_denom = data.loc[data["variant_name"] == exp, denominator].values
 
     return _compare_bootstrap_delta(
-        numerator_ctrl,
-        denominator_ctrl,
-        numerator_exp,
-        denominator_exp,
+        control_num,
+        control_denom,
+        exp_num,
+        exp_denom,
         **kwargs,
     )
 
@@ -148,63 +131,65 @@ def compare_delta(
 
     ctrl, exp = variants
 
-    numerator_ctrl = data.loc[data["variant_name"] == ctrl, numerator]
-    denominator_ctrl = data.loc[data["variant_name"] == ctrl, denominator]
-    numerator_exp = data.loc[data["variant_name"] == exp, numerator]
-    denominator_exp = data.loc[data["variant_name"] == exp, denominator]
+    control_num = data.loc[data["variant_name"] == ctrl, numerator]
+    control_denom = data.loc[data["variant_name"] == ctrl, denominator]
+    exp_num = data.loc[data["variant_name"] == exp, numerator]
+    exp_denom = data.loc[data["variant_name"] == exp, denominator]
 
     return _compare_delta(
-        numerator_ctrl, denominator_ctrl, numerator_exp, denominator_exp
+        control_num,
+        control_denom,
+        exp_num,
+        exp_denom,
     )
 
 
 def _compare_bootstrap_delta(
-    numerator_ctrl: np.array,
-    denominator_ctrl: np.array,
-    numerator_exp: np.array,
-    denominator_exp: np.array,
+    control_num: np.array,
+    control_denom: np.array,
+    exp_num: np.array,
+    exp_denom: np.array,
     n_bootstrap: int = 10_000,
 ):
-    n_users_a, n_users_b = len(numerator_ctrl), len(numerator_exp)
+    n_users_a, n_users_b = len(control_num), len(exp_num)
     n_users = n_users_a + n_users_b
     bs_observed = []
 
     for _ in tqdm(range(n_bootstrap)):
-        conversion = np.hstack((numerator_ctrl, numerator_exp))
-        session = np.hstack((denominator_ctrl, denominator_exp))
+        conversion = np.hstack((control_num, exp_num))
+        session = np.hstack((control_denom, exp_denom))
 
         assignments = np.random.choice(n_users, n_users, replace=True)
         ctrl_idxs = assignments[: int(n_users / 2)]
         test_idxs = assignments[int(n_users / 2) :]
 
-        bs_denominator_ctrl = session[ctrl_idxs]
+        bs_control_denom = session[ctrl_idxs]
         bs_denominator_exp = session[test_idxs]
-        bs_numerator_ctrl = conversion[ctrl_idxs]
-        bs_numerator_exp = conversion[test_idxs]
+        bs_control_num = conversion[ctrl_idxs]
+        bs_exp_num = conversion[test_idxs]
 
         bs_observed.append(
-            bs_numerator_exp.sum() / bs_denominator_exp.sum()
-            - bs_numerator_ctrl.sum() / bs_denominator_ctrl.sum()
+            bs_exp_num.sum() / bs_denominator_exp.sum()
+            - bs_control_num.sum() / bs_control_denom.sum()
         )
 
     observed_diffs = (
-        numerator_exp.sum() / denominator_exp.sum()
-        - numerator_ctrl.sum() / denominator_ctrl.sum()
+        exp_num.sum() / exp_denom.sum() - control_num.sum() / control_denom.sum()
     )
 
     lower_bound, upper_bound = _confidence_interval_bootstrap(
-        numerator_ctrl,
-        denominator_ctrl,
-        numerator_exp,
-        denominator_exp,
+        control_num,
+        control_denom,
+        exp_num,
+        exp_denom,
         n_bootstrap,
     )
     p_values = 2 * (1 - (np.abs(observed_diffs) > np.array(bs_observed)).mean())
     return dict(
-        control_mean=numerator_ctrl.sum() / denominator_ctrl.sum(),
-        experiment_mean=numerator_exp.sum() / denominator_exp.sum(),
-        control_var=ratio_variance(numerator_ctrl, denominator_ctrl),
-        experiment_var=ratio_variance(numerator_exp, denominator_exp),
+        control_mean=control_num.sum() / control_denom.sum(),
+        experiment_mean=exp_num.sum() / exp_denom.sum(),
+        control_var=ratio_variance(control_num, control_denom),
+        experiment_var=ratio_variance(exp_num, exp_denom),
         absolute_difference=observed_diffs,
         lower_bound=lower_bound,
         upper_bound=upper_bound,
@@ -242,40 +227,49 @@ def _confidence_interval_bootstrap(
 
 
 def _compare_delta(
-    numerator_ctrl: np.array,
-    denominator_ctrl: np.array,
-    numerator_exp: np.array,
-    denominator_exp: np.array,
+    control_num: np.array,
+    control_denom: np.array,
+    exp_num: np.array,
+    exp_denom: np.array,
 ) -> Dict[str, float]:
-    var_ctrl = ratio_variance(numerator_ctrl, denominator_ctrl)
-    var_exp = ratio_variance(numerator_exp, denominator_exp)
 
-    control_mean = numerator_ctrl.sum() / denominator_ctrl.sum()
-    experiment_mean = numerator_exp.sum() / denominator_exp.sum()
+    control_size = len(control_num)
+    exp_size = len(exp_num)
 
-    diff = experiment_mean - control_mean
-    stde = 1.96 * np.sqrt(var_ctrl + var_exp)
+    control_var = ratio_variance(control_num, control_denom)
+    experiment_var = ratio_variance(exp_num, exp_denom)
 
-    z_scores = np.abs(diff) / np.sqrt(var_ctrl + var_exp)
+    control_mean = control_num.sum() / control_denom.sum()
+    experiment_mean = exp_num.sum() / exp_denom.sum()
+
+    delta = experiment_mean - control_mean
+    stde = 1.96 * np.sqrt(control_var / control_size + experiment_var / exp_size)
+
+    z_scores = np.abs(delta) / np.sqrt(
+        control_var / control_size + experiment_var / exp_size
+    )
     p_values = stats.norm.sf(abs(z_scores)) * 2
 
     return dict(
         control_mean=control_mean,
         experiment_mean=experiment_mean,
-        control_var=var_ctrl,
-        experiment_var=var_exp,
+        control_var=control_var,
+        experiment_var=experiment_var,
         absolute_difference=experiment_mean - control_mean,
-        lower_bound=diff - stde,
-        upper_bound=diff + stde,
+        lower_bound=delta - stde,
+        upper_bound=delta + stde,
         p_values=p_values,
     )
 
 
 def ratio_variance(num: np.array, denom: np.array) -> float:
+    """
+    Reference:
+    https://www.stat.cmu.edu/~hseltman/files/ratio.pdf
+    """
     assert len(num) == len(
         denom
     ), f"Different length between num: {len(num)} and denom: {len(denom)}"
-    n_users = len(num)
     denom_mean = np.mean(denom)
     num_mean = np.mean(num)
     denom_variance = np.var(denom, ddof=1)
@@ -285,17 +279,4 @@ def ratio_variance(num: np.array, denom: np.array) -> float:
         (num_variance) / (denom_mean**2)
         - 2 * num_mean * denom_num_covariance / (denom_mean**3)
         + (num_mean**2) * (denom_variance) / (denom_mean**4)
-    ) / n_users
-
-
-def _unequal_var_ttest_denom(v1, n1, v2, n2):
-    vn1 = v1 / n1
-    vn2 = v2 / n2
-    with np.errstate(divide="ignore", invalid="ignore"):
-        df = (vn1 + vn2) ** 2 / (vn1**2 / (n1 - 1) + vn2**2 / (n2 - 1))
-
-    # If df is undefined, variances are zero (assumes n1 > 0 & n2 > 0).
-    # Hence it doesn't matter what df is as long as it's not NaN.
-    df = np.where(np.isnan(df), 1, df)
-    denom = np.sqrt(vn1 + vn2)
-    return df, denom
+    )

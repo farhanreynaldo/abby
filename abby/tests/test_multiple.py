@@ -41,8 +41,8 @@ class TestCompareMultiple:
         name = "click/impression"
         assert result[name]["control_mean"] == pytest.approx(0.135135, rel=4)
         assert result[name]["experiment_mean"] == pytest.approx(0.162371, rel=4)
-        assert result[name]["control_var"] == pytest.approx(0.000296, rel=4)
-        assert result[name]["experiment_var"] == pytest.approx(0.000475, rel=4)
+        assert result[name]["control_var"] == pytest.approx(0.0295697, rel=4)
+        assert result[name]["experiment_var"] == pytest.approx(0.0475355, rel=4)
         assert result[name]["absolute_difference"] == pytest.approx(0.027236, rel=4)
         assert result[name]["lower_bound"] == pytest.approx(-0.027189, rel=4)
         assert result[name]["upper_bound"] == pytest.approx(0.081661, rel=4)
