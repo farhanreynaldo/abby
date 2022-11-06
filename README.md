@@ -76,6 +76,21 @@ result = compare_multiple(
 )
 ```
 
+## A/B/N testing for multiple metrics
+
+```python
+from abby.datasets import load_dataset
+from abby import compare_multiple, Ratio
+
+data = load_dataset("click_impression_3_variants")
+
+result = compare_multiple(
+    data=data,
+    variants=["control", "experiment_A", "experiment_B"],
+    metrics=["click", Ratio("click", "impression")],
+)
+```
+
 <!-- Badges -->
 
 [pypi-image]: https://img.shields.io/pypi/v/abby
