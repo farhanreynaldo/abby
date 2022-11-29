@@ -7,4 +7,4 @@ from abby.compare import (  # noqa
 )
 from abby.utils import Ratio  # noqa
 
-__version__ = "0.1.1"
+__version__ = "0.1.2"
